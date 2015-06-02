@@ -14,4 +14,4 @@ GET        /_heroku_oauth_callback        controllers.Application.herokuOAuthCal
 GET        /vassets/*file                 controllers.Assets.versioned(path="/public", file: Asset)
 
 # WebJars
-GET        /webjars/*file                 controllers.WebJarAssets.at(file)
+GET        /webjars/org.webjars/*file     controllers.WebJarAssets.at(file)
