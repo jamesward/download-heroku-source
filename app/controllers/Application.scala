@@ -33,7 +33,7 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
         val appNames = apps.value.map(_.\("name").as[String]).sorted
         Ok(views.html.index(webJarUrl, appNames))
       } recover {
-        case e: UnauthorizedError => Redirect(heroku.loginUrl)
+        case e: UnauthorizedError => Redirect(heroku.loginUrl).withNewSession
         case e: Exception => InternalServerError(e.getMessage)
       }
     }
@@ -67,7 +67,7 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
           onClose = tmpZip.toFile.delete
         )
       } recover {
-        case e: UnauthorizedError => Redirect(heroku.loginUrl)
+        case e: UnauthorizedError => Redirect(heroku.loginUrl).withNewSession
         case e: Exception => NotFound(s"Could not download source for $app\n${e.getMessage}")
       }
     }
