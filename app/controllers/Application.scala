@@ -1,9 +1,10 @@
 package controllers
 
+import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
 
-import org.zeroturnaround.zip.ZipUtil
+import org.zeroturnaround.zip.{NameMapper, ZipUtil}
 import play.api.libs.Crypto
 import play.api.Configuration
 import play.api.mvc._
@@ -58,7 +59,11 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
 
       heroku.gitRepo(app).map { dir =>
         val tmpZip = Files.createTempFile(s"$herokuKey-$app", ".zip")
-        ZipUtil.pack(dir, tmpZip.toFile)
+        val nameMapper = new NameMapper {
+          // prefix the dir with the app name
+          override def map(name: String): String = app + File.separator + name
+        }
+        ZipUtil.pack(dir, tmpZip.toFile, nameMapper)
         dir.delete()
 
         Ok.sendFile(
