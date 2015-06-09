@@ -4,11 +4,10 @@ import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
 
-import org.zeroturnaround.zip.{NameMapper, ZipUtil}
 import play.api.libs.Crypto
 import play.api.Configuration
 import play.api.mvc._
-import utils.{UnauthorizedError, Heroku}
+import utils.{ZipHelper, UnauthorizedError, Heroku}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -58,12 +57,15 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
       implicit val herokuKey = crypto.decryptAES(token)
 
       heroku.gitRepo(app).map { dir =>
+
         val tmpZip = Files.createTempFile(s"$herokuKey-$app", ".zip")
-        val nameMapper = new NameMapper {
-          // prefix the dir with the app name
-          override def map(name: String): String = app + File.separator + name
+
+        val sources: Traversable[(File, String)] = tree(dir).map { file =>
+          file -> (app + File.separator + file.getPath.stripPrefix(dir.getPath))
         }
-        ZipUtil.pack(dir, tmpZip.toFile, nameMapper)
+
+        ZipHelper.zipNative(sources, tmpZip.toFile)
+
         dir.delete()
 
         Ok.sendFile(
@@ -77,5 +79,14 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
       }
     }
   }
+
+  // lifted from: http://stackoverflow.com/a/8340937/77409
+  private def tree(root: File, skipHidden: Boolean = false): Stream[File] =
+    if (!root.exists || (skipHidden && root.isHidden)) Stream.empty
+    else root #:: (
+      root.listFiles match {
+        case null => Stream.empty
+        case files => files.toStream.flatMap(tree(_, skipHidden))
+      })
 
 }
