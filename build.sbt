@@ -6,7 +6,7 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
 scalaVersion := "2.11.6"
 
-resolvers += Classpaths.sbtPluginReleases
+resolvers += Classpaths.typesafeReleases
 
 libraryDependencies ++= Seq(
   ws,
