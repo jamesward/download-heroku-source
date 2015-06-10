@@ -1,6 +1,7 @@
 package utils
 
 import java.io.File
+import java.util.Date
 import sbt.{IO, RichFile}
 
 import scala.sys.process.{ProcessLogger, Process}
@@ -27,6 +28,8 @@ object ZipHelper {
 
       for {
         (src, target) <- files
+        // roll back the date 24 hours because the zip stores the files in local time which means they are in the future for some users in some unzip clients
+        _ = target.setLastModified(new Date().getTime - (1000 * 60 * 60 * 24))
         if src.canExecute
       } target.setExecutable(true, true)
 
