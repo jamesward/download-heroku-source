@@ -7,10 +7,11 @@ import javax.inject.Inject
 import play.api.libs.Crypto
 import play.api.Configuration
 import play.api.mvc._
-import utils.{ZipHelper, UnauthorizedError, Heroku}
+import utils.{Heroku, UnauthorizedError, ZipHelper}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.Try
 
 
 class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Crypto) extends Controller {
@@ -56,23 +57,48 @@ class Application @Inject() (heroku: Heroku, config: Configuration, crypto: Cryp
     } { token =>
       implicit val herokuKey = crypto.decryptAES(token)
 
-      heroku.gitRepo(app).map { dir =>
+      heroku.builds(app).map { builds =>
 
-        val tmpZip = Files.createTempFile(s"$herokuKey-$app", ".zip")
+        builds.value.lastOption.fold {
+          BadRequest("No builds found")
+        } { build =>
+          val maybeSourceBlobUrl = (build \ "source_blob" \ "url").asOpt[String]
 
-        val sources: Traversable[(File, String)] = tree(dir).map { file =>
-          file -> (app + File.separator + file.getPath.stripPrefix(dir.getPath))
+          maybeSourceBlobUrl.fold {
+            InternalServerError("Could not get blob url")
+          } { sourceBlobUrl =>
+
+            val maybeDir = Try {
+              val tmpDir = Files.createTempDirectory(app)
+              ZipHelper.downloadAndExtractTarGz(sourceBlobUrl, tmpDir)
+              tmpDir.toFile
+            } recoverWith {
+              // failed to get the source blob so get the git repo instead
+              case e: Exception => heroku.gitRepo(app)
+            }
+
+            maybeDir.toOption.fold {
+              BadRequest("Could not get the source")
+            } { dir =>
+              val tmpZip = Files.createTempFile(s"$herokuKey-$app", ".zip")
+
+              val sources: Traversable[(File, String)] = tree(dir).map { file =>
+                file -> (app + File.separator + file.getPath.stripPrefix(dir.getPath))
+              }
+
+              ZipHelper.zipNative(sources, tmpZip.toFile)
+
+              dir.delete()
+
+              Ok.sendFile(
+                content = tmpZip.toFile,
+                fileName = _ => s"$app.zip",
+                onClose = tmpZip.toFile.delete
+              )
+            }
+
+          }
         }
-
-        ZipHelper.zipNative(sources, tmpZip.toFile)
-
-        dir.delete()
-
-        Ok.sendFile(
-          content = tmpZip.toFile,
-          fileName = _ => s"$app.zip",
-          onClose = tmpZip.toFile.delete
-        )
       } recover {
         case e: UnauthorizedError => Redirect(heroku.loginUrl).withNewSession
         case e: Exception => NotFound(s"Could not download source for $app\n${e.getMessage}")

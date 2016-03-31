@@ -1,21 +1,17 @@
 package utils
 
-import java.io.{File, InputStream, ByteArrayOutputStream}
-import java.net.URL
-import java.nio.file.{Path, Files}
+import java.io.File
+import java.nio.file.Files
 import javax.inject.Inject
 
-import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveOutputStream}
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
-import org.eclipse.jgit.api.{Git, CloneCommand}
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import play.api.Configuration
 import play.api.http.{HeaderNames, Status}
-import play.api.libs.iteratee.Iteratee
-import play.api.libs.json.{JsArray, JsObject, JsValue, Json}
-import play.api.libs.ws.{WSRequest, InMemoryBody, WSClient}
-import play.api.mvc.Results.EmptyContent
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import play.api.libs.json.{JsArray, JsValue}
+import play.api.libs.ws.{WSClient, WSRequest}
+import play.api.mvc.Results.EmptyContent
 
 import scala.concurrent.Future
 import scala.util.Try
@@ -61,20 +57,22 @@ class Heroku @Inject() (ws: WSClient, config: Configuration) {
     ws(s"/apps/$app").get().ok(_.json)
   }
 
-  def gitRepo(app: String)(implicit accessToken: String): Future[File] = {
-    Future.fromTry {
-      Try {
-        val tmpDir = Files.createTempDirectory(s"$accessToken-$app")
+  def builds(app: String)(implicit accessToken: String): Future[JsArray] = {
+    ws(s"/apps/$app/builds").get().ok(_.json.as[JsArray])
+  }
 
-        val cloneCommand = Git.cloneRepository()
-        cloneCommand.setURI(s"https://git.heroku.com/$app.git")
-        cloneCommand.setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", accessToken))
-        cloneCommand.setDirectory(tmpDir.toFile)
+  def gitRepo(app: String)(implicit accessToken: String): Try[File] = {
+    Try {
+      val tmpDir = Files.createTempDirectory(s"$accessToken-$app")
 
-        cloneCommand.call()
+      val cloneCommand = Git.cloneRepository()
+      cloneCommand.setURI(s"https://git.heroku.com/$app.git")
+      cloneCommand.setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", accessToken))
+      cloneCommand.setDirectory(tmpDir.toFile)
 
-        tmpDir.toFile
-      }
+      cloneCommand.call()
+
+      tmpDir.toFile
     }
   }
 
